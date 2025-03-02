@@ -1,8 +1,11 @@
 const sql = require("mssql");
 const fs = require("node:fs");
 const path = require("path");
+const childProcess = require("child_process");
 const { compareAsc, format, parse } = require("date-fns");
 require("dotenv").config();
+
+const editor = process.env.EDITOR ?? "vim";
 
 const db_config = {
     user: process.env.DB_USER,
@@ -53,7 +56,6 @@ async function status() {
 
         if (i == migrations.length - 1)
             console.log("Migrations are up to date!");
-
     } catch (err) {
         console.log(err);
     }
@@ -70,6 +72,10 @@ async function create(name) {
         fileName += ".sql";
         fs.writeFileSync(path.join(__dirname, "migrations", fileName), "");
         console.log("Migration created in /migrations/" + fileName);
+        childProcess.spawnSync(editor, [path.join(__dirname, "migrations", fileName)], {
+            stdio: 'inherit',
+            shell: true
+        });
     } catch (err) {
         console.log(err);
     }
@@ -151,6 +157,5 @@ async function main() {
     }
 }
 
-// main().then(process.exit());
 main();
 
