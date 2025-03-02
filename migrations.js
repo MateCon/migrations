@@ -1,6 +1,7 @@
 const sql = require("mssql");
 const fs = require("node:fs");
 const path = require("path");
+const { compareAsc, format, parse } = require("date-fns");
 require("dotenv").config();
 
 const db_config = {
@@ -13,11 +14,24 @@ const db_config = {
     }
 }
 
+function timestamp() {
+    return format(new Date(), "yyyy-MM-dd HH:mm:ss");
+}
+
+async function getMigrations() {
+    const files = fs.readdirSync(path.join(__dirname, "migrations"));
+    const migrations = files
+        .map(f => ({
+            file: f,
+            date: parse(f.substr(0, 14), "yyyyMMddHHmmss", new Date())
+        }))
+    return migrations;
+}
+
 async function init() {
     try {
-        sql.connect(db_config);
-        await sql.query`CREATE TABLE last_migration (date DATETIME);`
-        await sync();
+        await sql.query`CREATE TABLE last_migration (date SMALlDATETIME);`
+        // await sync();
     } catch (err) {
         console.log(err);
     }
@@ -25,9 +39,13 @@ async function init() {
 
 async function status() {
     try {
-        sql.connect(db_config);
-        const query = await sql.query`SELECT * FROM migrations;`
-        console.log(query);
+        const last_migration = (await sql.query`SELECT * FROM last_migration;`).recordset[0].date;
+        const migrations = (await getMigrations())
+            .sort(compareAsc)
+            .filter(m => compareAsc(m.date, last_migration) == 1);
+
+        console.log(migrations)
+        console.log(last_migration.toString());
     } catch (err) {
         console.log(err);
     }
@@ -35,10 +53,15 @@ async function status() {
 
 async function create(name) {
     try {
-        const fileName = format(new Date());
+        let date = timestamp();
+        let fileName = date
+            .replaceAll(" ", "")
+            .replaceAll("-", "")
+            .replaceAll(":", "");
         if (name) fileName += "-" + name;
         fileName += ".sql";
         fs.writeFileSync(path.join(__dirname, "migrations", fileName), "");
+        console.log("Migration created in /migrations/" + fileName);
     } catch (err) {
         console.log(err);
     }
@@ -46,9 +69,24 @@ async function create(name) {
 
 async function sync() {
     try {
-        sql.connect(db_config);
-        await sql.query``
-        await sync();
+        const last_migration = (await sql.query`SELECT * FROM last_migration;`).recordset[0].date;
+        const migrations = (await getMigrations())
+            .sort(compareAsc)
+            .filter(m => compareAsc(m.date, last_migration) == 1);
+        let query = "";
+
+        migrations.forEach(m => {
+            query += fs.readFileSync(path.join(__dirname, "migrations", m.file))
+        });
+
+        sql.query(query);
+
+        await sql.query`DELETE FROM last_migration;`
+        const req = new sql.Request()
+        await req
+            .input("time", sql.SmallDateTime, new Date())
+            .query(`INSERT INTO last_migration VALUES (@time);`);
+        console.log("Migrations synced successfully!");
     } catch (err) {
         console.log(err);
     }
@@ -79,13 +117,15 @@ async function main() {
             init();
             break;
         case "status":
-            status();
+            await sql.connect(db_config);
+            await status();
             break;
         case "create":
             create(firstParam);
             break;
         case "sync":
-            sync();
+            await sql.connect(db_config);
+            await sync();
             break;
         case "-h":
         case "--help":
