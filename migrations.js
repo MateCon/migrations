@@ -18,7 +18,7 @@ function timestamp() {
     return format(new Date(), "yyyy-MM-dd HH:mm:ss");
 }
 
-async function getMigrations() {
+function getMigrations() {
     const files = fs.readdirSync(path.join(__dirname, "migrations"));
     const migrations = files
         .map(f => ({
@@ -31,7 +31,7 @@ async function getMigrations() {
 async function init() {
     try {
         await sql.query`CREATE TABLE last_migration (date SMALlDATETIME);`
-        // await sync();
+        await sync();
     } catch (err) {
         console.log(err);
     }
@@ -39,13 +39,21 @@ async function init() {
 
 async function status() {
     try {
-        const last_migration = (await sql.query`SELECT * FROM last_migration;`).recordset[0].date;
-        const migrations = (await getMigrations())
-            .sort(compareAsc)
-            .filter(m => compareAsc(m.date, last_migration) == 1);
+        const last_migration = (await sql.query`SELECT * FROM last_migration ORDER BY date ASC;`).recordset[0].date;
+        const migrations = getMigrations();
 
-        console.log(migrations)
-        console.log(last_migration.toString());
+        let i = migrations.length - 1, j = 0;
+        while (i > 0 && compareAsc(migrations[i].date, last_migration) == 1) i--;
+
+        if (i >= 0 && i < migrations.length - 1)
+            console.log(`\x1b[34m/migrations/${migrations[i - 1].file}\x1b[39m`);
+
+        for (j = Math.max(i + 1, 0); j < migrations.length; j++)
+            console.log(`\x1b[31m/migrations/${migrations[j].file}\x1b[39m`);
+
+        if (i == migrations.length - 1)
+            console.log("Migrations are up to date!");
+
     } catch (err) {
         console.log(err);
     }
@@ -79,7 +87,7 @@ async function sync() {
             query += fs.readFileSync(path.join(__dirname, "migrations", m.file))
         });
 
-        sql.query(query);
+        await sql.query(query);
 
         await sql.query`DELETE FROM last_migration;`
         const req = new sql.Request()
@@ -112,30 +120,37 @@ async function main() {
     let mode = process.argv[2] ?? "modeNotFound";
     let firstParam = process.argv[3] ?? "";
 
-    switch (mode) {
-        case "init":
-            init();
-            break;
-        case "status":
-            await sql.connect(db_config);
-            await status();
-            break;
-        case "create":
-            create(firstParam);
-            break;
-        case "sync":
-            await sql.connect(db_config);
-            await sync();
-            break;
-        case "-h":
-        case "--help":
-            help();
-            break;
-        default:
-            modeNotFound();
-            break;
+    try {
+        switch (mode) {
+            case "init":
+                await init();
+                break;
+            case "status":
+                await sql.connect(db_config);
+                await status();
+                break;
+            case "create":
+                await create(firstParam);
+                break;
+            case "sync":
+                await sql.connect(db_config);
+                await sync();
+                break;
+            case "-h":
+            case "--help":
+                help();
+                break;
+            default:
+                modeNotFound();
+                break;
+        }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        sql.close();
     }
 }
 
+// main().then(process.exit());
 main();
 
