@@ -31,8 +31,8 @@ async function getDiff() {
 }
 
 async function init(params, flags) {
+    fs.mkdirSync(path.join(__dirname, "migrations"));
     await db.createTable();
-    await sync();
 };
 
 async function status(params, flags) {
@@ -175,7 +175,9 @@ async function main() {
     try {
         switch (mode) {
             case "init":
+                await db.connect();
                 await init(params, flags);
+                await db.disconnect();
                 break;
             case "status":
                 await db.connect();
