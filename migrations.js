@@ -40,10 +40,10 @@ async function status(params, flags) {
         }
     }
 
-    if (i >= 0 && i < migrations.length - 1)
+    if (i > 0 && i < migrations.length - 1)
         console.log(`\x1b[34m/migrations/${migrations[i - 1].file}\x1b[39m`);
 
-    for (j = Math.max(i + 1, 0); j < migrations.length; j++)
+    for (j = Math.max(i, 0); j < migrations.length; j++)
         console.log(`\x1b[31m/migrations/${migrations[j].file}\x1b[39m`);
 
     if (i == migrations.length - 1)
@@ -116,10 +116,10 @@ function parseArgv() {
     const flags = {
         open: false,
         all: false,
+        help: false,
     };
 
     function addFlag(c, flags) {
-        console.log(c)
         switch (c) {
             case "o":
                 flags.open = true;
@@ -127,10 +127,13 @@ function parseArgv() {
             case "a":
                 flags.all = true;
                 break;
+            case "h":
+                flags.help = true;
+                break;
         }
     }
 
-    for (let i = 3; i < argument_list.length; i++) {
+    for (let i = 2; i < argument_list.length; i++) {
         const curr = argument_list[i];
 
         switch (curr) {
@@ -140,12 +143,15 @@ function parseArgv() {
             case "--all":
                 argument_list.push("-a");
                 break;
+            case "--help":
+                argument_list.push("-h");
+                break;
             default:
                 if (curr.length > 1 && curr[0] == "-")
                     for (let j = 1; j < curr.length; j++)
                         addFlag(curr[j], flags);
                 else
-                    params.append(curr);
+                    params.push(curr);
         }
     }
 
@@ -153,8 +159,8 @@ function parseArgv() {
 }
 
 async function main() {
-    let mode = process.argv[2] ?? "modeNotFound";
     const { params, flags } = parseArgv();
+    let mode = params[0] ?? "modeNotFound";
 
     try {
         switch (mode) {
@@ -174,12 +180,9 @@ async function main() {
                 await sync(params, flags);
                 await db.disconnect();
                 break;
-            case "-h":
-            case "--help":
-                help();
-                break;
             default:
-                modeNotFound();
+                if (flags.help == true) help();
+                else modeNotFound();
                 break;
         }
     } catch (err) {
