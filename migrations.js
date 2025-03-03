@@ -21,37 +21,61 @@ function getMigrations() {
     return migrations;
 }
 
+async function getDiff() {
+    const last_migration = await db.getLastMigration();
+    const migrations = getMigrations()
+        .sort(compareAsc)
+        .filter(m => compareAsc(m.date, last_migration) == 1);
+    let diff = "";
+
+    migrations.forEach(m => {
+        diff += fs.readFileSync(path.join(__dirname, "migrations", m.file))
+    });
+
+    return diff;
+}
+
 async function init(params, flags) {
     await db.createTable();
     await sync();
 };
 
 async function status(params, flags) {
+    const colors = {
+        white: "\x1b[39m",
+        green: "\x1b[34m",
+        red: "\x1b[31m",
+    };
+
     const last_migration = await db.getLastMigration();
     const migrations = getMigrations();
+
+    function printMigration(idx) {
+        console.log(`/migrations/${migrations[idx].file}`)
+    }
 
     let i = migrations.length - 1, j = 0;
     while (i > 0 && compareAsc(migrations[i].date, last_migration) == 1) i--;
 
-    if (flags.all == true) {
-        while (j < i - 1) {
-            console.log(`\x1b[34m/migrations/${migrations[j].file}\x1b[39m`);
-            j++;
-        }
-    }
+    process.stdout.write(colors.green, "");
+    if (flags.all)
+        for (j = 0; j < i - 1; j++)
+            printMigration(j);
 
     if (i > 0 && i < migrations.length - 1)
-        console.log(`\x1b[34m/migrations/${migrations[i - 1].file}\x1b[39m`);
+        printMigration(i - 1);
 
+    process.stdout.write(colors.red);
     for (j = Math.max(i, 0); j < migrations.length; j++)
-        console.log(`\x1b[31m/migrations/${migrations[j].file}\x1b[39m`);
+        printMigration(j);
 
+    process.stdout.write(colors.white);
     if (i == migrations.length - 1)
         console.log("Migrations are up to date!");
 }
 
 async function create(params, flags) {
-    const name = params[0];
+    const name = params[1] ?? "";
     let date = timestamp();
     let fileName = date
         .replaceAll(" ", "")
@@ -67,20 +91,6 @@ async function create(params, flags) {
             shell: true
         });
     }
-}
-
-async function getDiff() {
-    const last_migration = await db.getLastMigration();
-    const migrations = getMigrations()
-        .sort(compareAsc)
-        .filter(m => compareAsc(m.date, last_migration) == 1);
-    let diff = "";
-
-    migrations.forEach(m => {
-        diff += fs.readFileSync(path.join(__dirname, "migrations", m.file))
-    });
-
-    return diff;
 }
 
 async function sync(params, flags) {
@@ -100,8 +110,10 @@ function help() {
     console.log("Command list:");
     console.log("  init          sets up DB for syncing migrations");
     console.log("  create $NAME  creates a migration");
+    console.log("     --open")
     console.log("  status        lists last migration applied and ones not applied");
-    console.log("     -a         shows all migrations");
+    console.log("     --all");
+    console.log("  diff          shows changes to be applied");
     console.log("  sync          applies migrations created after last sync");
     console.log("     -m $FILE   applies specific migration, marks all migrations as applied");
     console.log(".env setup:");
