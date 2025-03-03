@@ -69,22 +69,31 @@ async function create(params, flags) {
     }
 }
 
-async function sync() {
+async function getDiff() {
     const last_migration = await db.getLastMigration();
     const migrations = getMigrations()
         .sort(compareAsc)
         .filter(m => compareAsc(m.date, last_migration) == 1);
-    let query = "";
+    let diff = "";
 
     migrations.forEach(m => {
-        query += fs.readFileSync(path.join(__dirname, "migrations", m.file))
+        diff += fs.readFileSync(path.join(__dirname, "migrations", m.file))
     });
 
-    await db.query(query);
+    return diff;
+}
 
+async function sync(params, flags) {
+    const diff = await getDiff();
+    await db.query(diff);
     await db.updateLastMigration();
     console.log("Migrations synced successfully!");
-};
+}
+
+async function diff(params, flags) {
+    const diff = await getDiff();
+    console.log(diff);
+}
 
 function help() {
     console.log("This is a CLI tool to help manage migrations for SQL Server databases.");
@@ -170,6 +179,11 @@ async function main() {
             case "status":
                 await db.connect();
                 await status(params, flags);
+                await db.disconnect();
+                break;
+            case "diff":
+                await db.connect();
+                await diff(params, flags);
                 await db.disconnect();
                 break;
             case "create":
