@@ -22,84 +22,68 @@ function getMigrations() {
 }
 
 async function init(params, flags) {
-    try {
-        await db.createTable();
-        await sync();
-    } catch (err) {
-        console.log(err);
-    }
+    await db.createTable();
+    await sync();
 };
 
 async function status(params, flags) {
-    try {
-        const last_migration = await db.getLastMigration();
-        const migrations = getMigrations();
+    const last_migration = await db.getLastMigration();
+    const migrations = getMigrations();
 
-        let i = migrations.length - 1, j = 0;
-        while (i > 0 && compareAsc(migrations[i].date, last_migration) == 1) i--;
+    let i = migrations.length - 1, j = 0;
+    while (i > 0 && compareAsc(migrations[i].date, last_migration) == 1) i--;
 
-        if (flags.all == true) {
-            while (j < i - 1) {
-                console.log(`\x1b[34m/migrations/${migrations[j].file}\x1b[39m`);
-                j++;
-            }
+    if (flags.all == true) {
+        while (j < i - 1) {
+            console.log(`\x1b[34m/migrations/${migrations[j].file}\x1b[39m`);
+            j++;
         }
-
-        if (i >= 0 && i < migrations.length - 1)
-            console.log(`\x1b[34m/migrations/${migrations[i - 1].file}\x1b[39m`);
-
-        for (j = Math.max(i + 1, 0); j < migrations.length; j++)
-            console.log(`\x1b[31m/migrations/${migrations[j].file}\x1b[39m`);
-
-        if (i == migrations.length - 1)
-            console.log("Migrations are up to date!");
-    } catch (err) {
-        console.log(err);
     }
+
+    if (i >= 0 && i < migrations.length - 1)
+        console.log(`\x1b[34m/migrations/${migrations[i - 1].file}\x1b[39m`);
+
+    for (j = Math.max(i + 1, 0); j < migrations.length; j++)
+        console.log(`\x1b[31m/migrations/${migrations[j].file}\x1b[39m`);
+
+    if (i == migrations.length - 1)
+        console.log("Migrations are up to date!");
 }
 
 async function create(params, flags) {
-    try {
-        const name = params[0];
-        let date = timestamp();
-        let fileName = date
-            .replaceAll(" ", "")
-            .replaceAll("-", "")
-            .replaceAll(":", "");
-        if (name) fileName += "-" + name;
-        fileName += ".sql";
-        fs.writeFileSync(path.join(__dirname, "migrations", fileName), "");
-        console.log("Migration created in /migrations/" + fileName);
-        if (flags.open == true) {
-            childProcess.spawnSync(editor, [path.join(__dirname, "migrations", fileName)], {
-                stdio: 'inherit',
-                shell: true
-            });
-        }
-    } catch (err) {
-        console.log(err);
+    const name = params[0];
+    let date = timestamp();
+    let fileName = date
+        .replaceAll(" ", "")
+        .replaceAll("-", "")
+        .replaceAll(":", "");
+    if (name) fileName += "-" + name;
+    fileName += ".sql";
+    fs.writeFileSync(path.join(__dirname, "migrations", fileName), "");
+    console.log("Migration created in /migrations/" + fileName);
+    if (flags.open == true) {
+        childProcess.spawnSync(editor, [path.join(__dirname, "migrations", fileName)], {
+            stdio: 'inherit',
+            shell: true
+        });
     }
-};
+}
 
 async function sync() {
-    try {
-        const last_migration = await db.getLastMigration();
-        const migrations = getMigrations()
-            .sort(compareAsc)
-            .filter(m => compareAsc(m.date, last_migration) == 1);
-        let query = "";
+    const last_migration = await db.getLastMigration();
+    const migrations = getMigrations()
+        .sort(compareAsc)
+        .filter(m => compareAsc(m.date, last_migration) == 1);
+    let query = "";
 
-        migrations.forEach(m => {
-            query += fs.readFileSync(path.join(__dirname, "migrations", m.file))
-        });
+    migrations.forEach(m => {
+        query += fs.readFileSync(path.join(__dirname, "migrations", m.file))
+    });
 
-        await db.query(query);
+    await db.query(query);
 
-        await db.updateLastMigration();
-        console.log("Migrations synced successfully!");
-    } catch (err) {
-        console.log(err);
-    }
+    await db.updateLastMigration();
+    console.log("Migrations synced successfully!");
 };
 
 function help() {
@@ -126,31 +110,51 @@ function modeNotFound() {
     console.log("Command not found, for help use the flag --help or -h.");
 }
 
-async function main() {
-    let mode = process.argv[2] ?? "modeNotFound";
+function parseArgv() {
+    const argument_list = process.argv.map(a => a);
     const params = [];
     const flags = {
         open: false,
         all: false,
     };
 
-    let i = 3;
-    while (i < process.argv.length) {
-        const arg = process.argv[i];
-        switch (arg) {
-            case "--open":
-            case "-o":
+    function addFlag(c, flags) {
+        console.log(c)
+        switch (c) {
+            case "o":
                 flags.open = true;
                 break;
-            case "--all":
-            case "-a":
+            case "a":
                 flags.all = true;
                 break;
-            default:
-                params.push(arg)
         }
-        i++;
     }
+
+    for (let i = 3; i < argument_list.length; i++) {
+        const curr = argument_list[i];
+
+        switch (curr) {
+            case "--open":
+                argument_list.push("-o");
+                break;
+            case "--all":
+                argument_list.push("-a");
+                break;
+            default:
+                if (curr.length > 1 && curr[0] == "-")
+                    for (let j = 1; j < curr.length; j++)
+                        addFlag(curr[j], flags);
+                else
+                    params.append(curr);
+        }
+    }
+
+    return { params, flags };
+}
+
+async function main() {
+    let mode = process.argv[2] ?? "modeNotFound";
+    const { params, flags } = parseArgv();
 
     try {
         switch (mode) {
