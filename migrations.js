@@ -31,7 +31,7 @@ function getMigrations() {
     return migrations;
 }
 
-async function init() {
+async function init(params, flags) {
     try {
         await sql.query`CREATE TABLE last_migration (date SMALlDATETIME);`
         await sync();
@@ -40,13 +40,20 @@ async function init() {
     }
 };
 
-async function status() {
+async function status(params, flags) {
     try {
         const last_migration = (await sql.query`SELECT * FROM last_migration ORDER BY date ASC;`).recordset[0].date;
         const migrations = getMigrations();
 
         let i = migrations.length - 1, j = 0;
         while (i > 0 && compareAsc(migrations[i].date, last_migration) == 1) i--;
+
+        if (flags.all == true) {
+            while (j < i - 1) {
+                console.log(`\x1b[34m/migrations/${migrations[j].file}\x1b[39m`);
+                j++;
+            }
+        }
 
         if (i >= 0 && i < migrations.length - 1)
             console.log(`\x1b[34m/migrations/${migrations[i - 1].file}\x1b[39m`);
@@ -61,8 +68,9 @@ async function status() {
     }
 }
 
-async function create(name) {
+async function create(params, flags) {
     try {
+        const name = params[0];
         let date = timestamp();
         let fileName = date
             .replaceAll(" ", "")
@@ -72,10 +80,12 @@ async function create(name) {
         fileName += ".sql";
         fs.writeFileSync(path.join(__dirname, "migrations", fileName), "");
         console.log("Migration created in /migrations/" + fileName);
-        childProcess.spawnSync(editor, [path.join(__dirname, "migrations", fileName)], {
-            stdio: 'inherit',
-            shell: true
-        });
+        if (flags.open == true) {
+            childProcess.spawnSync(editor, [path.join(__dirname, "migrations", fileName)], {
+                stdio: 'inherit',
+                shell: true
+            });
+        }
     } catch (err) {
         console.log(err);
     }
@@ -84,7 +94,7 @@ async function create(name) {
 async function sync() {
     try {
         const last_migration = (await sql.query`SELECT * FROM last_migration;`).recordset[0].date;
-        const migrations = (await getMigrations())
+        const migrations = getMigrations()
             .sort(compareAsc)
             .filter(m => compareAsc(m.date, last_migration) == 1);
         let query = "";
@@ -112,9 +122,17 @@ function help() {
     console.log("  init          sets up DB for syncing migrations");
     console.log("  create $NAME  creates a migration");
     console.log("  status        lists last migration applied and ones not applied");
-    console.log("     --all      shows all migrations");
+    console.log("     -a         shows all migrations");
     console.log("  sync          applies migrations created after last sync");
     console.log("     -m $FILE   applies specific migration, marks all migrations as applied");
+    console.log(".env setup:");
+    console.log("  EDITOR=nano|vim|nvim|code");
+    // To do
+    // console.log("  DB=SQL_SERVER|MYSQL|POSTGRESQL");
+    console.log("  DB_USER");
+    console.log("  DB_PASS");
+    console.log("  DB_NAME");
+    console.log("  DB_HOST");
     console.log("Created by https://github.com/matecon");
 }
 
@@ -124,23 +142,45 @@ function modeNotFound() {
 
 async function main() {
     let mode = process.argv[2] ?? "modeNotFound";
-    let firstParam = process.argv[3] ?? "";
+    const params = [];
+    const flags = {
+        open: false,
+        all: false,
+    };
+
+    let i = 3;
+    while (i < process.argv.length) {
+        const arg = process.argv[i];
+        switch (arg) {
+            case "--open":
+            case "-o":
+                flags.open = true;
+                break;
+            case "--all":
+            case "-a":
+                flags.all = true;
+                break;
+            default:
+                params.push(arg)
+        }
+        i++;
+    }
 
     try {
         switch (mode) {
             case "init":
-                await init();
+                await init(params, flags);
                 break;
             case "status":
                 await sql.connect(db_config);
-                await status();
+                await status(params, flags);
                 break;
             case "create":
-                await create(firstParam);
+                await create(params, flags);
                 break;
             case "sync":
                 await sql.connect(db_config);
-                await sync();
+                await sync(params, flags);
                 break;
             case "-h":
             case "--help":
