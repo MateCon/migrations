@@ -1,21 +1,11 @@
-const sql = require("mssql");
 const fs = require("node:fs");
 const path = require("path");
 const childProcess = require("child_process");
 const { compareAsc, format, parse } = require("date-fns");
+const db = require("./adapters")("sql-server");
 require("dotenv").config();
 
 const editor = process.env.EDITOR ?? "vim";
-
-const db_config = {
-    user: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
-    server: process.env.DB_HOST,
-    options: {
-        trustServerCertificate: true
-    }
-}
 
 function timestamp() {
     return format(new Date(), "yyyy-MM-dd HH:mm:ss");
@@ -33,7 +23,7 @@ function getMigrations() {
 
 async function init(params, flags) {
     try {
-        await sql.query`CREATE TABLE last_migration (date SMALlDATETIME);`
+        await db.createTable();
         await sync();
     } catch (err) {
         console.log(err);
@@ -42,7 +32,7 @@ async function init(params, flags) {
 
 async function status(params, flags) {
     try {
-        const last_migration = (await sql.query`SELECT * FROM last_migration ORDER BY date ASC;`).recordset[0].date;
+        const last_migration = await db.getLastMigration();
         const migrations = getMigrations();
 
         let i = migrations.length - 1, j = 0;
@@ -93,7 +83,7 @@ async function create(params, flags) {
 
 async function sync() {
     try {
-        const last_migration = (await sql.query`SELECT * FROM last_migration;`).recordset[0].date;
+        const last_migration = await db.getLastMigration();
         const migrations = getMigrations()
             .sort(compareAsc)
             .filter(m => compareAsc(m.date, last_migration) == 1);
@@ -103,13 +93,9 @@ async function sync() {
             query += fs.readFileSync(path.join(__dirname, "migrations", m.file))
         });
 
-        await sql.query(query);
+        await db.query(query);
 
-        await sql.query`DELETE FROM last_migration;`
-        const req = new sql.Request()
-        await req
-            .input("time", sql.SmallDateTime, new Date())
-            .query(`INSERT INTO last_migration VALUES (@time);`);
+        await db.updateLastMigration();
         console.log("Migrations synced successfully!");
     } catch (err) {
         console.log(err);
@@ -172,15 +158,17 @@ async function main() {
                 await init(params, flags);
                 break;
             case "status":
-                await sql.connect(db_config);
+                await db.connect();
                 await status(params, flags);
+                await db.disconnect();
                 break;
             case "create":
                 await create(params, flags);
                 break;
             case "sync":
-                await sql.connect(db_config);
+                await db.connect();
                 await sync(params, flags);
+                await db.disconnect();
                 break;
             case "-h":
             case "--help":
@@ -192,8 +180,6 @@ async function main() {
         }
     } catch (err) {
         console.error(err);
-    } finally {
-        sql.close();
     }
 }
 
