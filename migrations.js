@@ -10,9 +10,10 @@ const db = require("./adapters")("sql-server");
 require("dotenv").config();
 
 const editor = process.env.EDITOR ?? "vim";
+const migrationsDirectory = path.join(__dirname, process.env.MIGRATIONS_DIRECTORY_PATH ?? "migrations")
 
 function getMigrations() {
-    const files = fs.readdirSync(path.join(__dirname, "migrations"));
+    const files = fs.readdirSync(migrationsDirectory);
     return files.map(file => ({ file, date: fileToDate(file.substr(0, 11)) }))
 }
 
@@ -24,14 +25,14 @@ async function getDiff() {
     let diff = "";
 
     migrations.forEach(m => {
-        diff += fs.readFileSync(path.join(__dirname, "migrations", m.file))
+        diff += fs.readFileSync(path.join(migrationsDirectory, m.file))
     });
 
     return diff;
 }
 
 async function init(params, flags) {
-    fs.mkdirSync(path.join(__dirname, "migrations"));
+    fs.mkdirSync(migrationsDirectory);
     await db.createTable();
     await db.updateLastMigration()
 };
@@ -47,7 +48,7 @@ async function status(params, flags) {
     const migrations = getMigrations();
 
     function printMigration(idx) {
-        console.log(`/migrations/${migrations[idx].file}`)
+        console.log(`${migrationsDirectory}/${migrations[idx].file}`)
     }
 
     let i = migrations.length - 1, j = 0;
@@ -73,10 +74,10 @@ async function status(params, flags) {
 async function create(params, flags) {
     const name = params[1] ?? "";
     let fileName = fileDate() + (name && `-${name}`) + ".sql";
-    fs.writeFileSync(path.join(__dirname, "migrations", fileName), "");
+    fs.writeFileSync(path.join(migrationsDirectory, fileName), "");
     console.log("Migration created in /migrations/" + fileName);
     if (flags.open == true) {
-        childProcess.spawnSync(editor, [path.join(__dirname, "migrations", fileName)], {
+        childProcess.spawnSync(editor, [path.join(migrationsDirectory, fileName)], {
             stdio: 'inherit',
             shell: true
         });
@@ -122,6 +123,7 @@ function help() {
     console.log("  DB_PASS");
     console.log("  DB_NAME");
     console.log("  DB_HOST");
+    console.log("  MIGRATIONS_DIRECTORY_PATH    relative to current directory, default is ./migrations")
     console.log("Created by https://github.com/matecon");
 }
 
