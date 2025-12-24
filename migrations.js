@@ -33,6 +33,7 @@ async function getDiff() {
 async function init(params, flags) {
     fs.mkdirSync(path.join(__dirname, "migrations"));
     await db.createTable();
+    await db.updateLastMigration()
 };
 
 async function status(params, flags) {
@@ -89,6 +90,13 @@ async function sync(params, flags) {
     console.log("Migrations synced successfully!");
 }
 
+async function updateSyncDate(params, flags) {
+    const diff = await getDiff();
+    console.log(diff);
+    await db.updateLastMigration();
+    console.log("Sync date updated");
+}
+
 async function diff(params, flags) {
     const diff = await getDiff();
     console.log(diff);
@@ -97,14 +105,15 @@ async function diff(params, flags) {
 function help() {
     console.log("This is a CLI tool to help manage migrations for SQL Server databases.");
     console.log("Command list:");
-    console.log("  init          sets up DB for syncing migrations");
-    console.log("  create $NAME  creates a migration");
+    console.log("  init           sets up DB for syncing migrations");
+    console.log("  create $NAME   creates a migration");
     console.log("     --open")
-    console.log("  status        lists last migration applied and ones not applied");
+    console.log("  status         lists last migration applied and ones not applied");
     console.log("     --all");
-    console.log("  diff          shows changes to be applied");
-    console.log("  sync          applies migrations created after last sync");
-    console.log("     -m $FILE   applies specific migration, marks all migrations as applied");
+    console.log("  diff           shows changes to be applied");
+    console.log("  sync           applies migrations created after last sync");
+    console.log("     -m $FILE    applies specific migration, marks all migrations as applied");
+    console.log("  updateSyncDate shows diff and updates sync date, for using other databases");
     console.log(".env setup:");
     console.log("  EDITOR=nano|vim|nvim|code");
     // To do
@@ -195,6 +204,11 @@ async function main() {
             case "sync":
                 await db.connect();
                 await sync(params, flags);
+                await db.disconnect();
+                break;
+            case "updateSyncDate":
+                await db.connect();
+                await updateSyncDate(params, flags);
                 await db.disconnect();
                 break;
             default:
